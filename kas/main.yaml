@@ -1,0 +1,32 @@
+header:
+  version: 18
+    
+# Core Repos for a Yocto Project  
+repos:
+  # BitBake Tools
+  bitbake:
+    url: https://git.openembedded.org/bitbake
+    # yocto-6.0.1
+    commit: f39569d04818f8a7ebb407dc0d8a21f94164794a
+    path: layers/third-party/bitbake
+    layers:
+      # Bitbake is not a meta layer, it is only the tools
+      bitbake: disabled
+
+  openembedded-core:
+    url: https://git.openembedded.org/openembedded-core
+    # yocto-6.0.3
+    commit: dfd0b4ba2ef04b694329db01c22dfb2c47f0a4b0
+    path: layers/third-party/openembedded-core
+    layers:
+      meta:
+
+  meta-openembedded:
+    url: "https://github.com/openembedded/meta-openembedded.git"
+    commit: "f28a144aa0a0ae05ca2ee91e1aef6aa05f6a12db"
+    path: "layers/third-party/meta-openembedded"
+    layers:
+      meta-oe:
+      meta-python:
+      meta-multimedia:
+      meta-networking:

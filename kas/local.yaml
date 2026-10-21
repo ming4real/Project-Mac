@@ -1,0 +1,8 @@
+header:
+  version: 18
+
+local_conf_header:
+  shared-cache: |
+    DL_DIR = "/yocto-build/share/downloads"
+    SSTATE_DIR = "/yocto-build/share/sstate-cache/${MACHINE}"
+    BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"
