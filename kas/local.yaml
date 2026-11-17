@@ -6,3 +6,5 @@ local_conf_header:
     DL_DIR = "/yocto-build/share/downloads"
     SSTATE_DIR = "/yocto-build/share/sstate-cache/${MACHINE}"
     BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"
+
+machine: macbookpro14-3
