@@ -8,3 +8,4 @@ local_conf_header:
     BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"
 
 machine: macbookpro14-3
+distro: mac-distro

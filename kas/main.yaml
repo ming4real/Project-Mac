@@ -39,9 +39,6 @@ repos:
     layers:
       meta-yocto-bsp:
 
-  meta-mac:
-    path: layers/my-layers/meta-mac
-
   meta-linux-mainline:
     url: https://github.com/betafive/meta-linux-mainline.git
     # wrynose
@@ -49,3 +46,10 @@ repos:
     path: layers/third-party/meta-linux-mainline
     layers:
       .:
+      
+  meta-mac:
+    path: layers/my-layers/meta-mac
+
+  meta-mac-distro:
+    path: layers/project/meta-mac-distro
+
