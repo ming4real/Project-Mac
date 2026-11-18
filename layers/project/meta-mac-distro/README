@@ -2,13 +2,16 @@ Mac distribution layer
 ======================
 
 This layer depends on OE-Core (Wrynose). The project kas configuration selects
-it with the Mac BSP and linux-stable. The image recipe is located at
-recipes-images/images/mac-image.bb.
+it with the Mac BSP and linux-stable for both images.
+
+* mac-image is the OS for the internal SSD and the source WIC for installation.
+* mac-image-installer is the bootable USB rescue image. It adds disk utilities
+  and /usr/sbin/install-macbookpro14-3 to the same base system.
 
 Headless wired access
 ---------------------
 
-mac-image installs mac-debug-user, systemd-networkd and systemd-conf, and
+Both images install mac-debug-user, systemd-networkd and systemd-conf, and
 selects OpenSSH through ssh-server-openssh. No additional network manager or
 DHCP client is needed.
 
@@ -46,8 +49,8 @@ DHCP client is needed.
   the public key in version control and rebuild to provision another key.
   Keep the corresponding private key on the SSH client.
 
-ming has no added administrative privileges. Root SSH is disabled; privileged
-troubleshooting requires a separately chosen administrative access policy.
+Root SSH is disabled. The configured ming account has passwordless sudo
+through the existing /etc/sudoers.d/90-ming policy.
 The kernel, graphics settings and GRUB configuration are unchanged.
 
 Build and validation
@@ -57,8 +60,70 @@ From the repository root, use the existing kas configuration:
 
     kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -p'
     kas shell kas/main.yaml:kas/local.yaml -c 'bitbake-layers show-appends'
-    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -n mac-image'
-    kas build kas/main.yaml:kas/local.yaml --target mac-image
+    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -n mac-image mac-image-installer'
+    kas build kas/main.yaml:kas/local.yaml --target mac-image --target mac-image-installer
+
+Find both .wic.zst files and their .wic.bmap files under
+build/tmp/deploy/images/macbookpro14-3/.
+
+Installing from USB
+-------------------
+
+1. Back up any other data you need from the SSD. The installer automatically
+   preserves EFI/APPLE from the existing EFI partition.
+2. Write the mac-image-installer WIC image to a dedicated rescue USB drive.
+   Use an image writer that supports .wic.zst, or decompress it first. This
+   erases the selected USB drive. Start the Mac while holding Option and
+   select the rescue drive's EFI Boot entry.
+3. Place the mac-image .wic or .wic.zst on storage accessible from the rescue
+   system and separate from /dev/nvme0n1. Confirm with lsblk that it is the intended internal
+   4Kn SSD. Unmount its volumes and deactivate any swap on it first.
+4. Run the dry-run command, then repeat without --dry-run after reviewing
+   its output. The real run validates the WIC filesystems and checks the
+   saved Apple EFI files before asking you to type ERASE.
+
+       sudo /usr/sbin/install-macbookpro14-3 --dry-run \
+           /mnt/data/mac-image-macbookpro14-3.rootfs.wic.zst \
+           /dev/nvme0n1
+
+   Dry-run mounts existing SSD EFI partitions read-only and reports the
+   backup source and destination. It leaves the SSD untouched and creates
+   no Apple EFI backup. Both modes decompress compressed input into a temporary
+   file. If /tmp is too small for the uncompressed WIC, point TMPDIR to a writable
+   directory on separate storage using sudo env TMPDIR=/mnt/data/tmp.
+5. Shut down after a successful install, remove the rescue USB, and boot
+   from the internal SSD. The installer restores and verifies EFI/APPLE,
+   installs the fallback EFI bootloader, and sets GRUB and /boot to use the
+   new partition UUIDs. It leaves EFI NVRAM unchanged.
+
+Apple EFI backup and recovery
+-----------------------------
+
+Use --backup-dir /mnt/data/backups to choose an existing writable destination
+on separate persistent storage. Otherwise the installer looks alongside the
+WIC, in TMPDIR and on the rescue system, and checks mounted media under /mnt,
+/media and /run/media. It prints the path of the verified mac-apple-efi.*
+directory and keeps persistent copies for recovery.
+
+When only RAM is available, the real run requires you to type RAM BACKUP
+before the separate ERASE confirmation. Power loss or reboot can destroy the
+RAM copy. If installation fails after SSD writes begin, the installer keeps
+that copy in RAM. Save it to persistent media before restarting or rebooting.
+
+If the SSD has no Apple files, pass a persistent backup directory containing
+APPLE as the final argument. This can be a mac-apple-efi.* directory from an
+earlier run or a copy of the original EFI/APPLE tree. Keep it outside the
+repository and images.
+
+    sudo /usr/sbin/install-macbookpro14-3 \
+        /mnt/data/mac-image-macbookpro14-3.rootfs.wic.zst \
+        /dev/nvme0n1 /mnt/data/mac-apple-efi.XXXXXX
+
+If the EFI partition cannot be mounted read-only or multiple EFI partitions
+contain Apple files, resolve the discovery error before installing.
+
+Inspecting networking and SSH
+-----------------------------
 
 After building, inspect the image manifest and rootfs before booting:
 

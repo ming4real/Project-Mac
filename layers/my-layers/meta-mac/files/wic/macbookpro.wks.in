@@ -1,0 +1,8 @@
+# short-description: EFI disk image for MacBook Pro 14,3
+# long-description: GPT disk image with space for Apple firmware files
+
+part /boot --source bootimg_efi --sourceparams="loader=${EFI_PROVIDER}" --ondisk sda --label EFI --active --align 1024 --fixed-size 512M --part-type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+part / --source rootfs --ondisk sda --fstype=ext4 --label platform --align 1024 --use-uuid
+
+bootloader --ptable gpt --timeout=5 --append="rootfstype=ext4 console=ttyS0,115200 console=tty0"
+
