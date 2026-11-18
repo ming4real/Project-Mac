@@ -1,41 +1,110 @@
-This README file contains information on the contents of the meta-mac-distro layer.
+Mac distribution layer
+======================
 
-Please see the corresponding sections below for details.
+This layer depends on OE-Core (Wrynose). The project kas configuration selects
+it with the Mac BSP and linux-stable. The image recipe is located at
+recipes-images/images/mac-image.bb.
 
-Dependencies
-============
+Headless wired access
+---------------------
 
-  URI: <first dependency>
-  branch: <branch name>
+mac-image installs mac-debug-user, systemd-networkd and systemd-conf, and
+selects OpenSSH through ssh-server-openssh. No additional network manager or
+DHCP client is needed.
 
-  URI: <second dependency>
-  branch: <branch name>
+* OE-Core's unmodified systemd-conf recipe installs
+  /usr/lib/systemd/network/80-wired.network through its default
+  dhcp-ethernet PACKAGECONFIG. Type=ether matches Ethernet interfaces and
+  DHCP=yes enables IPv4 and IPv6 DHCP. The policy excludes veth* interfaces
+  and does not apply when the kernel command line configures networking
+  through nfsroot or ip. It also uses the DHCP-provided MTU, route metric 10
+  and a MAC-based client identifier. No custom wired policy is installed.
+* OE-Core's default systemd PACKAGECONFIG includes networkd, building and
+  packaging it as systemd-networkd. mac-image explicitly installs that
+  package. OE-Core declares systemd-networkd.service in SYSTEMD_SERVICE for
+  the package, and systemd.bbclass defaults SYSTEMD_AUTO_ENABLE to enable,
+  providing automatic service startup without a project systemd append.
+* OE-Core's default systemd-sshd-socket-mode PACKAGECONFIG registers
+  sshd.socket, which systemd.bbclass enables by default. The socket listens
+  on port 22 and starts sshd@.service instances for incoming connections.
+  sshd.socket pulls in sshdgenkeys.service through Wants=, and sshd@.service
+  orders each instance after key generation. Device-specific host keys are
+  generated automatically; no host private keys are shipped by this layer.
+  openssh_%.bbappend only installs and packages the key-only SSH policy.
+* 00-mac-key-only.conf is included before other settings by OE's sshd_config.
+  It requires public-key authentication and disables passwords,
+  keyboard-interactive authentication, empty passwords and root SSH login.
+* mac-debug-user.bb uses useradd to create the normal user and group ming,
+  with /home/ming and /bin/sh (provided by the base image). The password
+  field is the deliberately unmatchable marker '*NP*'. It is neither an
+  empty password nor a leading '!' account lock: a locked account would also
+  block key login with this distribution's non-PAM OpenSSH configuration.
+  The account is created during image assembly, without a first-login step.
+* The existing recipes-core/users/files/ming.pub is installed verbatim as
+  /home/ming/.ssh/authorized_keys. The home, .ssh directory and key file are
+  owned by ming:ming with modes 0750, 0700 and 0600 respectively. Replace
+  the public key in version control and rebuild to provision another key.
+  Keep the corresponding private key on the SSH client.
 
-  .
-  .
-  .
+ming has no added administrative privileges. Root SSH is disabled; privileged
+troubleshooting requires a separately chosen administrative access policy.
+The kernel, graphics settings and GRUB configuration are unchanged.
 
-Patches
-=======
+Build and validation
+--------------------
 
-Please submit any patches against the meta-mac-distro layer to the xxxx mailing list (xxxx@zzzz.org)
-and cc: the maintainer:
+From the repository root, use the existing kas configuration:
 
-Maintainer: XXX YYYYYY <xxx.yyyyyy@zzzzz.com>
+    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -p'
+    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake-layers show-appends'
+    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -n mac-image'
+    kas build kas/main.yaml:kas/local.yaml --target mac-image
 
-Table of Contents
-=================
+After building, inspect the image manifest and rootfs before booting:
 
-  I. Adding the meta-mac-distro layer to your build
- II. Misc
+    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -e mac-image' > /tmp/mac-image.env
 
+Use IMAGE_ROOTFS from that output to check:
 
-I. Adding the meta-mac-distro layer to your build
-=================================================
+* /etc/passwd: ming has /home/ming and an executable /bin/sh.
+* /etc/shadow: ming has '*NP*', with no account/password expiry requiring
+  interactive password changes.
+* /home/ming, .ssh and authorized_keys: ownership and modes as listed above;
+  compare authorized_keys with the source public key.
+* /usr/lib/systemd/network/80-wired.network: OE-Core's default wired policy
+  with DHCP=yes; no custom 20-wired.network should override it.
+* Enablement links/presets for systemd-networkd.service and sshd.socket,
+  plus the packaged sshd@.service and sshdgenkeys.service units and their
+  key-generation dependencies/order.
+* /etc/ssh/sshd_config includes sshd_config.d/*.conf before other settings,
+  and that directory contains 00-mac-key-only.conf.
 
-Run 'bitbake-layers add-layer meta-mac-distro'
+First boot requires a writable root filesystem for generated host keys,
+a supported wired adapter with carrier, a reachable DHCP server, and a
+network path allowing TCP port 22. USB/Thunderbolt Ethernet enumeration,
+driver support and actual key login must be confirmed on the MacBook.
+No interaction with its screen or keyboard is needed for provisioning.
+Find the IPv4 address in the DHCP server/router's lease list, then run on
+the client (substitute the matching private-key path and leased address):
 
-II. Misc
-========
+    ssh -o IdentitiesOnly=yes -i /path/to/private-key ming@MAC_IP
 
---- replace with specific information about the meta-mac-distro layer ---
+Accept/verify the newly generated host key on the client as appropriate.
+After connecting:
+
+    id
+    echo "$HOME $SHELL"
+    ip -4 address
+    networkctl status
+    systemctl is-enabled systemd-networkd.service sshd.socket
+    systemctl is-active systemd-networkd.service sshd.socket
+    stat -c '%U:%G %a %n' /home/ming /home/ming/.ssh /home/ming/.ssh/authorized_keys
+
+From the client, verify password-only and root connections fail:
+
+    ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive ming@MAC_IP
+    ssh -o IdentitiesOnly=yes -i /path/to/private-key root@MAC_IP
+
+An image build and hardware boot are required to verify final rootfs
+ownership, service startup, host-key generation, DHCP leases and SSH login.
+Metadata parsing and dry runs alone cannot establish those runtime results.

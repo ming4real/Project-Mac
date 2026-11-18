@@ -5,8 +5,13 @@ LICENSE = "MIT"
 require recipes-core/images/core-image-minimal.bb
 
 IMAGE_FEATURES += "ssh-server-openssh"
+IMAGE_FEATURES += "package-management"
 
-IMAGE_INSTALL:append = " \
-    kernel-modules \
-    linux-firmware \
-"
+IMAGE_INSTALL:append = " kernel-modules"
+IMAGE_INSTALL:append = " linux-firmware"
+IMAGE_INSTALL:append = " mac-debug-user"
+IMAGE_INSTALL:append = " sudo"
+IMAGE_INSTALL:append = " systemd-conf"
+IMAGE_INSTALL:append = " systemd-networkd"
+IMAGE_INSTALL:append = " vim"
+
