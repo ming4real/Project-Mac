@@ -4,3 +4,4 @@ LICENSE = "MIT"
 require mac-image-common.inc
 
 IMAGE_INSTALL:append = " macbookpro-installer"
+PACKAGE_FEED_URIS = ""

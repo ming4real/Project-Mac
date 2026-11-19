@@ -5,6 +5,7 @@ This layer depends on OE-Core (Wrynose). The project kas configuration selects
 it with the Mac BSP and linux-stable for both images.
 
 * mac-image is the OS for the internal SSD and the source WIC for installation.
+  It includes OPKG and a feed for the local package server.
 * mac-image-installer is the bootable USB rescue image. It adds disk utilities
   and /usr/sbin/install-macbookpro14-3 to the same base system.
 
@@ -37,34 +38,95 @@ DHCP client is needed.
 * 00-mac-key-only.conf is included before other settings by OE's sshd_config.
   It requires public-key authentication and disables passwords,
   keyboard-interactive authentication, empty passwords and root SSH login.
-* mac-debug-user.bb uses useradd to create the normal user and group ming,
-  with /home/ming and /bin/sh (provided by the base image). The password
-  field is the deliberately unmatchable marker '*NP*'. It is neither an
-  empty password nor a leading '!' account lock: a locked account would also
-  block key login with this distribution's non-PAM OpenSSH configuration.
-  The account is created during image assembly, without a first-login step.
-* The existing recipes-core/users/files/ming.pub is installed verbatim as
-  /home/ming/.ssh/authorized_keys. The home, .ssh directory and key file are
-  owned by ming:ming with modes 0750, 0700 and 0600 respectively. Replace
-  the public key in version control and rebuild to provision another key.
-  Keep the corresponding private key on the SSH client.
+* mac-debug-user.bb creates the configured user and group with /home/<user>
+  and /bin/sh. Image assembly sets the initial password for local login.
+* Both images install the public key configured in .env verbatim as
+  /home/<user>/.ssh/authorized_keys. The account owns the home, .ssh directory
+  and key file, which have modes 0750, 0700 and 0600 respectively.
 
-Root SSH is disabled. The configured ming account has passwordless sudo
-through the existing /etc/sudoers.d/90-ming policy.
-The kernel, graphics settings and GRUB configuration are unchanged.
+Root SSH is disabled. The configured account has passwordless sudo through
+/etc/sudoers.d/90-mac-user.
+
+Project configuration
+---------------------
+
+From the repository root, create a private configuration file and edit it.
+
+    install -m 0600 .env.example .env
+
+* MAC_USERNAME is the local and SSH login on both images. Use a unique Linux
+  user name, starting with a lowercase letter or underscore and containing
+  up to 32 lowercase letters, digits, underscores or hyphens.
+* MAC_PASSWORD is the initial local-login password. Use 12–128 UTF-8 bytes
+  without control characters. The complete value after the first `=` is
+  literal, including spaces and punctuation. Put comments on their own lines.
+* MAC_SSH_PUBLIC_KEY_FILE is required for image builds and the configured kas
+  shell. Set it to an absolute path on the build host, for example
+  `MAC_SSH_PUBLIC_KEY_FILE=/home/you/.ssh/id_ed25519.pub`. Use a file containing
+  one OpenSSH public key with an optional comment. Keep the matching private
+  key on the SSH client. Change the path or replace the file and rebuild to
+  provision another key.
+* OPKG_SERVER_IP and OPKG_SERVER_PORT select a reachable IP address assigned to
+  the build host and the listening port. The same address goes into mac-image.
+
+The build wrapper requires Python 3, kas, mkpasswd and ssh-keygen (from whois
+and openssh-client on Debian/Ubuntu). It reads .env on every invocation, sends
+the password to mkpasswd over stdin and validates the public key with
+ssh-keygen. The ignored .yocto-secrets directory holds the hash and a snapshot
+of the validated public key. The snapshot name and the account recipe's
+install signature depend on the key contents, so edits at the same path also
+trigger a rebuild. Keep the per-checkout salt to reproduce the same password
+hash across builds. A fresh checkout gets a new salt.
+
+Use a unique development password and change it after deployment. Keep .env,
+.yocto-secrets, image artifacts and caches containing those images private.
+Someone with an image can extract the password hash and attempt offline
+guesses. The account IPK carries the public SSH key and account definition.
+Only image assembly adds the initial password hash to /etc/shadow. The
+existing SSH policy continues to require public keys.
 
 Build and validation
 --------------------
 
-From the repository root, use the existing kas configuration:
+The wrapper uses the existing kas configuration and selects both images by
+default. Pass an image name to build just that image.
 
-    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -p'
-    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake-layers show-appends'
-    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -n mac-image mac-image-installer'
-    kas build kas/main.yaml:kas/local.yaml --target mac-image --target mac-image-installer
+    scripts/yocto.py shell -c 'bitbake -p'
+    scripts/yocto.py build
+    scripts/yocto.py build mac-image-installer
 
 Find both .wic.zst files and their .wic.bmap files under
 build/tmp/deploy/images/macbookpro14-3/.
+
+OPKG package feed
+-----------------
+
+After building images or individual recipes, index the packages and serve
+the deployment directory from the build host.
+
+    scripts/yocto.py index
+    scripts/serve-packages.sh
+
+The index command runs `bitbake package-index` for the existing IPKs and can
+build the native indexing tool if needed. Run it again after package changes.
+The server reads .env, binds to the configured address and port, and serves
+build/tmp/deploy/ipk/ in the foreground. Press Ctrl+C to stop it. For a custom
+Yocto deployment directory, pass `--directory /path/to/ipk`.
+
+Python's HTTP server is suitable for a trusted development network only. Keep
+the unsigned package feed off public networks and allow the configured port
+through the build host's firewall only where needed.
+
+On the running mac-image, verify the entries in /etc/opkg/base-feeds.conf,
+then install an available package from the MacBook.
+
+    sudo opkg update
+    opkg list
+    sudo opkg install <package-name>
+
+BitBake builds the three feed paths from `all`, `TUNE_PKGARCH`, and
+`MACHINE_ARCH`. Rebuild mac-image after changing the server address or port
+to update the feed in a new image. The rescue image omits the package manager.
 
 Installing from USB
 -------------------
@@ -127,15 +189,13 @@ Inspecting networking and SSH
 
 After building, inspect the image manifest and rootfs before booting:
 
-    kas shell kas/main.yaml:kas/local.yaml -c 'bitbake -e mac-image' > /tmp/mac-image.env
+    scripts/yocto.py shell -c 'bitbake -e mac-image | sed -n "/^IMAGE_ROOTFS=/p"'
 
-Use IMAGE_ROOTFS from that output to check:
+Use IMAGE_ROOTFS from that output to check the configured account and services.
 
-* /etc/passwd: ming has /home/ming and an executable /bin/sh.
-* /etc/shadow: ming has '*NP*', with no account/password expiry requiring
-  interactive password changes.
-* /home/ming, .ssh and authorized_keys: ownership and modes as listed above;
-  compare authorized_keys with the source public key.
+* /etc/passwd gives the configured user /home/<user> and /bin/sh.
+* /home/<user>, .ssh and authorized_keys have the ownership and modes listed
+  above. Compare authorized_keys with the source public key.
 * /usr/lib/systemd/network/80-wired.network: OE-Core's default wired policy
   with DHCP=yes; no custom 20-wired.network should override it.
 * Enablement links/presets for systemd-networkd.service and sshd.socket,
@@ -152,7 +212,7 @@ No interaction with its screen or keyboard is needed for provisioning.
 Find the IPv4 address in the DHCP server/router's lease list, then run on
 the client (substitute the matching private-key path and leased address):
 
-    ssh -o IdentitiesOnly=yes -i /path/to/private-key ming@MAC_IP
+    ssh -o IdentitiesOnly=yes -i /path/to/private-key MAC_USERNAME@MAC_IP
 
 Accept/verify the newly generated host key on the client as appropriate.
 After connecting:
@@ -167,7 +227,7 @@ After connecting:
 
 From the client, verify password-only and root connections fail:
 
-    ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive ming@MAC_IP
+    ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive MAC_USERNAME@MAC_IP
     ssh -o IdentitiesOnly=yes -i /path/to/private-key root@MAC_IP
 
 An image build and hardware boot are required to verify final rootfs

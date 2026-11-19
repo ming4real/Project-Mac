@@ -1,2 +1,4 @@
 build/*
 .kas_shell_history
+/.env
+/.yocto-secrets/

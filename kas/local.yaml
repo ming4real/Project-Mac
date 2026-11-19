@@ -1,6 +1,12 @@
 header:
   version: 18
 
+env:
+  MAC_USERNAME: null
+  MAC_PASSWORD_HASH_FILE: null
+  MAC_SSH_PUBLIC_KEY_STAGED: null
+  OPKG_SERVER_URL: null
+
 local_conf_header:
   shared-cache: |
     DL_DIR = "/yocto-build/share/downloads"
