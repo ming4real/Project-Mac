@@ -50,6 +50,15 @@ do_rootfs[prefuncs] += "mac_require_project_config"
 do_rootfs[file-checksums] += "${@d.getVar('MAC_PASSWORD_HASH_FILE') + ':True' if d.getVar('MAC_PASSWORD_HASH_FILE') else ''}"
 ROOTFS_POSTPROCESS_COMMAND += "mac_set_initial_password;"
 
+# Compatibility with binaries expecting the conventional x86-64 ELF interpreter.
+mac_create_lib64_compat_link() {
+    install -d "${IMAGE_ROOTFS}/lib64"
+    ln -sfn ../usr/lib/ld-linux-x86-64.so.2 \
+        "${IMAGE_ROOTFS}/lib64/ld-linux-x86-64.so.2"
+}
+
+ROOTFS_POSTPROCESS_COMMAND += "mac_create_lib64_compat_link;"
+
 IMAGE_INSTALL:append = " \
     kernel-modules \
     linux-firmware \

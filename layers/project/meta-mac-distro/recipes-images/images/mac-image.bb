@@ -7,3 +7,5 @@ require mac-image-common.inc
 IMAGE_FEATURES += "package-management"
 PACKAGE_FEED_URIS = "${OPKG_SERVER_URL}"
 PACKAGE_FEED_ARCHS = "all ${TUNE_PKGARCH} ${MACHINE_ARCH}"
+
+IMAGE_INSTALL:append = " packagegroup-mac-development"
