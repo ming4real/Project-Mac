@@ -15,3 +15,4 @@ local_conf_header:
 
 machine: macbookpro14-3
 distro: mac-distro
+target: mac-image

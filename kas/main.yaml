@@ -46,6 +46,12 @@ repos:
     path: layers/third-party/meta-linux-mainline
     layers:
       .:
+
+  meta-wayland:
+    url: https://codeberg.org/flk/meta-wayland.git
+    branch: wrynose
+    commit: 2b97daa23e0e612a087ea54b150bd0b8e0ff9378
+    path: layers/third-party/meta-wayland
       
   meta-mac:
     path: layers/my-layers/meta-mac
