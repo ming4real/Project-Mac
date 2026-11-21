@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Give D-Bus and systemd user services (such as the GTK portal) the X display.
+dbus-update-activation-environment --systemd DISPLAY XAUTHORITY
+exec startxfce4

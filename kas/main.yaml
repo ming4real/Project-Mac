@@ -30,6 +30,8 @@ repos:
       meta-python:
       meta-multimedia:
       meta-networking:
+      meta-gnome:
+      meta-xfce:
 
   meta-yocto:
     url: https://git.yoctoproject.org/meta-yocto
