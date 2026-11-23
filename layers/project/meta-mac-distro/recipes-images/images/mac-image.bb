@@ -16,6 +16,7 @@ IMAGE_INSTALL:append = " weston"
 IMAGE_INSTALL:append = " weston-xwayland"
 IMAGE_INSTALL:append = " flatpak"
 IMAGE_INSTALL:append = " pavucontrol"
+IMAGE_INSTALL:append = " bluez5"
 
 # Xorg uses the existing DRM stack through logind and the modesetting driver.
 IMAGE_INSTALL:append = " xserver-xorg"

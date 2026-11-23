@@ -1,0 +1,117 @@
+MacBookPro14,3 Bluetooth Low Energy investigation
+2026-11-23 UTC
+
+1. Starting state
+
+   Apple MacBookPro14,3, EFI 451.140.1.0.0, Yocto Wrynose, Linux
+   6.18.63, Xfce on Xorg, project baseline 71ad19e. Wi-Fi works through
+   the PCIe BCM43602 (14e4:43ba) and the Touch Bar works through the
+   USB iBridge (05ac:8600). Bluetooth had no hci0, no rfkill entry and
+   no bluetoothctl. Loading btusb had succeeded without creating a
+   controller. No Bluetooth USB interface was found.
+
+2. Bus identification and confirmed probe blocker
+
+   Live ACPI exposes BCM2E7C:00 at \_SB_.PCI0.URT0.BLTH, status 15,
+   with alias acpi:BCM2E7C:APPLE-UART-BLTH:. URT0 is Intel PCI function
+   0000:00:1e.0 (8086:a127). Its intel-lpss driver instantiated the
+   platform device dw-apb-uart.2, which was unbound with
+   waiting_for_supplier=0. There was no /sys/bus/serial. The UART was
+   runtime-suspended, an observation before driver binding that does
+   not establish an electrical power fault.
+
+   The SHA-256 of the MacBook's /boot/bzImage matches dingle's baseline
+   deploy image (a7c80d7ec29718de65054c8f3aa6108df35bfd338c835f6fd71179c17e1fe7a6).
+   The matching build config has BT and BT_HCIBTUSB as modules and
+   BT_LE enabled. SERIAL_8250_DW, SERIAL_DEV_BUS and BT_HCIUART are
+   unset. Linux therefore cannot enumerate and bind this UART child
+   as an HCI device. The USB-driver test targeted a different transport.
+   BlueZ is needed for userspace operation and cannot remedy this
+   missing kernel device. Optional BCM43602 Wi-Fi files are unrelated
+   to the missing Bluetooth UART probe.
+
+   The exact 6.18.63 sources on dingle contain BCM2E7C in
+   drivers/bluetooth/hci_bcm.c. The driver handles Apple's BTLP, BTPU
+   and BTPD ACPI methods and the baud property. drivers/tty/serdev/core.c
+   matches Apple UART children using that property when the resource
+   template is empty. The controller's actual HCI response, chip
+   revision and patch-RAM requirements remain to be measured after
+   driver binding. No hardware fault was demonstrated.
+
+3. Candidate changes and build
+
+   recipes-kernel/linux/files/macbook-display.cfg enables DesignWare
+   8250 and HCI UART as modules, serdev and its TTY controller in the
+   kernel, and the Broadcom HCI UART protocol. The 8250 runtime slot
+   count grows from four to eight to give LPSS UARTs room after the
+   legacy slots while preserving the configured ttyS0 console.
+   Existing USB Bluetooth support is retained. The first configure
+   pass dropped BT_HCIUART_BCM because the baseline disabled GPIOLIB.
+   Enabled GPIOLIB, a Kconfig dependency, and restarted the build.
+
+   layers/project/meta-mac-distro/recipes-images/images/mac-image.bb
+   installs bluez5 for macbookpro14-3. The pinned OE-Core recipe enables
+   the client, tools and systemd integration by default. No speculative
+   firmware or downstream driver patch was added. The image already
+   installs linux-firmware and the iBridge, Touch Bar and ALS packages.
+
+   Built on dingle under build/ble using the project's kas entry point
+   and separate build and output directories. The first attempt logged
+   BitBake basehash mismatches on image tasks and was interrupted for
+   the GPIOLIB correction. The retry completed all 11,635 tasks without
+   those errors. The candidate .config retained BT_HCIUART_BCM and all
+   requested UART settings. The rootfs contains BlueZ 5.86-r0,
+   bluetoothctl, btmon, bluetoothd and bluetooth.service. The module
+   index maps platform:dw-apb-uart to 8250_dw and acpi*:BCM2E7C:* to
+   hci_uart. The manifest includes the existing brcmfmac and all three
+   iBridge packages.
+
+   Candidate: build/ble/tmp/deploy/images/macbookpro14-3/
+   mac-image-macbookpro14-3.rootfs-20261123145546.wic.zst
+   SHA-256: 9a8d95460a2c121e7f9c60cf6e7b77872f2d2838638d855d6757e7d19569ab5e
+   A temporary copy on the MacBook passed the same checksum. The WIC
+   GRUB entry selects the candidate's root partition by PARTUUID.
+   The WIC fstab has two /boot entries, using LABEL=EFI and /dev/sda1.
+   For a USB test alongside the internal SSD, point /boot at the USB
+   EFI partition's PARTUUID in the USB copy before booting it.
+
+4. Hardware acceptance pending a designated USB drive and peripheral
+
+   Boot the candidate with its matching modules. Check the ACPI child
+   binds on the serial bus and Linux registers hci0. Confirm
+   bluetoothctl lists the controller and that it powers on. Scan using
+   LE transport for a known nearby, connectable peripheral, connect to
+   it and record the Connected state and GATT service resolution or
+   an LE Connection Complete event. Capture any requested .hcd names
+   from the kernel log and check Wi-Fi, Touch Bar and the boot console.
+   The user approved a one-time boot from a designated spare USB
+   drive. The last block inventory showed only the internal SSD, and
+   a test peripheral has not been identified. The USB test did not run.
+
+5. Internal SSD deployment
+
+   At the user's request, transferred dingle build 20261123145546 over
+   SSH and used the previous local-IPK and /boot/bzImage procedure.
+   The matching kernel metadata and module IPKs were checked against
+   the kernel deploy archive. Installed the new 8250_dw and hci_uart
+   packages and refreshed the existing kernel packages whose binaries
+   differed. The first attempt restored the old files automatically
+   when a verification command was unavailable in the root PATH.
+   The retry completed. The module indexes were regenerated with their
+   normal read permissions after checking unprivileged module lookup.
+
+   The installed boot image SHA-256 is
+   d313df2394cd65596a2a2533be11cb4aa070e4a1d496c676f1f241d3d36bd782.
+   All 41 installed module binaries match candidate package contents,
+   and depmod found no unresolved symbols with its System.map. Both
+   new drivers resolve by name and advertise release 6.18.63. The
+   installed package list gained only 8250-dw and hci-uart. BlueZ was
+   not part of this kernel-only deployment.
+
+   GRUB and /boot/bzImage-6.18.63-working passed their pre-deployment
+   checksum checks. The prior default kernel, complete 6.18.63
+   module tree and opkg state are archived under
+   /var/backups/project-mac-ble-kernel-20261123. Both kernels use the
+   same module directory, so full rollback includes restoring that
+   saved tree and its package state. No reboot or controller test
+   has been performed since the deployment.
