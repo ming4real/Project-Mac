@@ -1,0 +1,42 @@
+Subject: [PATCH] apple-ib-tb: define tb_touch before its use
+
+The appletb_device structure embeds tb_touch, which must be fully
+defined before it can be used as a structure member.
+
+Upstream-Status: Pending
+Signed-off-by: Iain Menzies-Runciman <iain@siliconbladeconsultants.com>
+
+diff --git a/apple-ib-tb.c b/apple-ib-tb.c
+index 3ec3a41..69c8299 100644
+--- a/apple-ib-tb.c
++++ b/apple-ib-tb.c
+@@ -131,6 +131,14 @@ static const struct attribute_group appletb_attr_group = {
+ 	.attrs = appletb_attrs,
+ };
+ 
++/* MBP14,3: minimal MT input backport for Touch Bar 'display' mode (6.15–6.16).
++ * For 6.17+ upstream HID adds proper MT parsing; this shim remains harmless.
++ */
++struct tb_touch {
++	struct input_dev *input;
++	bool mt_inited;
++};
++
+ struct appletb_device {
+ 	bool			active;
+ 	struct device		*log_dev;
+@@ -200,14 +208,6 @@ static struct hid_driver appletb_hid_driver;
+ 
+ 
+ 
+-/* MBP14,3: minimal MT input backport for Touch Bar 'display' mode (6.15–6.16).
+- * For 6.17+ upstream HID adds proper MT parsing; this shim remains harmless.
+- */
+-struct tb_touch {
+-	struct input_dev *input;
+-	bool mt_inited;
+-};
+-
+ static int __maybe_unused tb_input_init(struct usb_interface *intf, struct tb_touch *tb)
+ {
+ 	int rc;

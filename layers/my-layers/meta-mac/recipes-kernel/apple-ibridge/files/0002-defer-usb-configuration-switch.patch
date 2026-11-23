@@ -1,0 +1,20 @@
+Subject: [PATCH] apple-ibridge: defer USB configuration changes during HID probe
+
+Avoid synchronous USB reconfiguration during HID probing, which can
+deadlock when the USB core disconnects the interface being probed.
+
+Upstream-Status: Pending
+
+diff --git a/apple-ibridge.c b/apple-ibridge.c
+index 4b1d628..c501606 100644
+--- a/apple-ibridge.c
++++ b/apple-ibridge.c
+@@ -239,7 +239,7 @@ int apple_ib_set_tb_mode(struct usb_device *udev, enum tb_mode mode)
+ 	dev_info(&udev->dev, "MBP14,3: switching Touch Bar to cfg=%d (%s)\n",
+ 		 target_cv, (target_cv == dcv) ? "display" : "keyboard");
+ 
+-	ret = usb_set_configuration(udev, target_cv);
++	ret = usb_driver_set_configuration(udev, target_cv);
+ 	if (ret)
+ 		dev_err(&udev->dev, "MBP14,3: usb_set_configuration(%d) failed: %d\n",
+ 			target_cv, ret);

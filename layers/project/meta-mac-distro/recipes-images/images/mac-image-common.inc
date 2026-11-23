@@ -59,12 +59,14 @@ mac_create_lib64_compat_link() {
 
 ROOTFS_POSTPROCESS_COMMAND += "mac_create_lib64_compat_link;"
 
-IMAGE_INSTALL:append = " \
-    kernel-modules \
-    linux-firmware \
-    mac-debug-user \
-    sudo \
-    systemd-conf \
-    systemd-networkd \
-    vim \
-"
+IMAGE_INSTALL:append = " kernel-modules"
+IMAGE_INSTALL:append = " linux-firmware"
+IMAGE_INSTALL:append = " mac-debug-user"
+IMAGE_INSTALL:append = " sudo"
+IMAGE_INSTALL:append = " systemd-conf"
+IMAGE_INSTALL:append = " systemd-networkd"
+IMAGE_INSTALL:append = " vim"
+IMAGE_INSTALL:append = " usbutils"
+IMAGE_INSTALL:append = " iw"
+IMAGE_INSTALL:append = " wpa-supplicant"
+IMAGE_INSTALL:append = " kernel-module-apple-ibridge kernel-module-apple-ib-tb kernel-module-apple-ib-als"
