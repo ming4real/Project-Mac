@@ -1,0 +1,132 @@
+Subject: [PATCH] apple-ib-tb: remove unused multitouch input device
+
+The device was registered on the USB interface during firmware key strip
+activation, but the module never forwarded any touch reports to it. The
+USB interface can outlive the Touch Bar module. On a module reload, the
+old input device therefore remained visible with a name pointer into the
+unloaded module and reading /proc/bus/input/devices raised an oops.
+
+Remove the unused device and its disconnected report handler. The
+firmware's HID keyboard continues to deliver the key strip events.
+
+Upstream-Status: Pending
+
+diff --git a/apple-ib-tb.c b/apple-ib-tb.c
+--- a/apple-ib-tb.c
++++ b/apple-ib-tb.c
+@@ -40,8 +40,5 @@
+ #include <linux/usb.h>
+ #include <linux/workqueue.h>
+-#include <linux/version.h>   
+-#include <linux/usb/input.h>
+-#include <linux/input/mt.h>
+ 
+ #include "apple-ibridge.h"
+ 
+@@ -129,14 +127,6 @@
+ 
+ static const struct attribute_group appletb_attr_group = {
+ 	.attrs = appletb_attrs,
+-};
+-
+-/* MBP14,3: minimal MT input backport for Touch Bar 'display' mode (6.15–6.16).
+- * For 6.17+ upstream HID adds proper MT parsing; this shim remains harmless.
+- */
+-struct tb_touch {
+-	struct input_dev *input;
+-	bool mt_inited;
+ };
+ 
+ struct appletb_device {
+@@ -176,12 +166,6 @@
+ 	int			idle_timeout;
+ 	bool			dim_to_is_calc;
+ 	int			fn_mode;
+-
+-	#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)
+-	/* MBP14,3: input device that will emit MT touches in display mode */
+-	struct tb_touch       touch;
+-	#endif
+-
+ };
+ 
+ struct appletb_key_translation {
+@@ -205,50 +189,6 @@
+ };
+ 
+ static struct hid_driver appletb_hid_driver;
+-
+-
+-
+-static int __maybe_unused tb_input_init(struct usb_interface *intf, struct tb_touch *tb)
+-{
+-	int rc;
+-	tb->input = devm_input_allocate_device(&intf->dev);
+-	if (!tb->input)
+-		return -ENOMEM;
+-
+-	tb->input->name = "Apple Touch Bar (MBP14,3)";
+-	tb->input->phys = "usb/input0";
+-	usb_to_input_id(interface_to_usbdev(intf), &tb->input->id);
+-	input_set_drvdata(tb->input, tb);
+-
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)
+-	input_mt_init_slots(tb->input, 10, INPUT_MT_DIRECT);
+-	/* Conservative axis ranges; refine if you know exact report scale */
+-	input_set_abs_params(tb->input, ABS_MT_POSITION_X, 0, 2170, 0, 0);
+-	input_set_abs_params(tb->input, ABS_MT_POSITION_Y, 0, 60,   0, 0);
+-	tb->mt_inited = true;
+-#endif
+-	rc = input_register_device(tb->input);
+-	return rc;
+-}
+-
+-/* Call this from your interrupt-IN URB completion that carries touch data.
+- * Report assumption: [id][x_lo][x_hi][y_lo][y_hi]...
+- */
+-static void __maybe_unused tb_handle_touch_report(struct tb_touch *tb, const u8 *buf, size_t len)
+-{
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)
+-	if (tb->mt_inited && len >= 5) {
+-		u16 x = buf[1] | (buf[2] << 8);
+-		u16 y = buf[3] | (buf[4] << 8);
+-		input_mt_slot(tb->input, 0);
+-		input_mt_report_slot_state(tb->input, MT_TOOL_FINGER, true);
+-		input_event(tb->input, EV_ABS, ABS_MT_POSITION_X, x);
+-		input_event(tb->input, EV_ABS, ABS_MT_POSITION_Y, y);
+-		input_mt_sync_frame(tb->input);
+-		input_sync(tb->input);
+-	}
+-#endif
+-}
+ 
+ static int appletb_send_hid_report(struct appletb_report_info *rinfo,
+ 				   __u8 requesttype, void *data, __u16 size)
+@@ -1096,27 +1036,6 @@
+ 		tb_dev->cur_tb_disp = APPLETB_CMD_DISP_OFF;
+ 
+ 		appletb_update_touchbar(tb_dev, false);
+-		#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)
+-		/* MBP14,3: set up an input device for display-mode touches.
+-		* NOTE: This only allocates/registers the input device. You still need to
+-		*       feed touch samples into it (see tb_handle_touch_report()).
+-		*/
+-		{
+-			struct usb_interface *intf;
+-			int rc_mt;
+-
+-			intf = appletb_get_usb_iface(tb_dev->disp_info.hdev);
+-			if (intf) {
+-				rc_mt = tb_input_init(intf, &tb_dev->touch);
+-				if (rc_mt)
+-					dev_warn(tb_dev->log_dev,
+-							"MT: input init failed: %d (display mode)\n", rc_mt);
+-			} else {
+-				dev_warn(tb_dev->log_dev,
+-						"MT: no USB interface for display HID; skipping MT init\n");
+-			}
+-		}
+-		#endif
+ 
+ 		/* set up the input handler */
+ 		tb_dev->inp_handler.event = appletb_inp_event;

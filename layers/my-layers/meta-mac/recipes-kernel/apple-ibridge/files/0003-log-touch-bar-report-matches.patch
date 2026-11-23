@@ -1,0 +1,46 @@
+Subject: [PATCH] apple-ib-tb: log report matches and skip unrelated interfaces
+
+Log which HID interface provides each Touch Bar control report so that
+a missing report can be distinguished from a failed command. Keep HID
+interfaces without either control attached to the parent driver only.
+The Touch Bar suspend and resume callbacks assume that every attached
+interface has report information.
+
+Upstream-Status: Pending
+
+diff --git a/apple-ib-tb.c b/apple-ib-tb.c
+--- a/apple-ib-tb.c
++++ b/apple-ib-tb.c
+@@ -990,8 +990,10 @@ static int appletb_fill_report_info(struct appletb_device *tb_dev,
+ 			report_info = &tb_dev->disp_info;
+ 	}
+ 
+-	if (!report_info)
+-		return 0;
++	if (!report_info) {
++		hid_info(hdev, "No Touch Bar mode or display control report\n");
++		return -ENODEV;
++	}
+ 
+ 	usb_iface = appletb_get_usb_iface(hdev);
+ 	if (!usb_iface) {
+@@ -1018,6 +1020,10 @@ static int appletb_fill_report_info(struct appletb_device *tb_dev,
+ 		break;
+ 	}
+ 
++	hid_info(hdev, "Touch Bar %s control: report ID %u, type %u\n",
++		 report_info == &tb_dev->mode_info ? "mode" : "display",
++		 report_info->report_id, report_info->report_type);
++
+ 	return 1;
+ }
+ 
+@@ -1137,7 +1143,7 @@ static int appletb_probe(struct hid_device *hdev,
+ 			goto unreg_handler;
+ 		}
+ 
+-		dev_dbg(tb_dev->log_dev, "Touchbar activated\n");
++		dev_info(tb_dev->log_dev, "Touch Bar activated (fnmode=%u)\n", tb_dev->fn_mode);
+ 	}
+ 
+ 	return 0;

@@ -9,12 +9,20 @@ SRC_URI = " \
     git://github.com/F13-Kr1pt0n/macbook-pro-touchbar-driver.git;protocol=https;branch=touchbar-driver-hid-driver \
     file://0001-fix-tb-touch-declaration-order.patch \
     file://0002-defer-usb-configuration-switch.patch \
+    file://0003-log-touch-bar-report-matches.patch \
+    file://0004-remove-unused-touch-bar-multitouch-device.patch \
 "
 SRCREV = "ecfadc37538d1995ddd2383dd83a1be82fdfdf23"
 
 PV = "1.0+git"
+PR = "r2"
 
 inherit module
+
+# On this T1, keyboard mode exposes the firmware key strip's HID reports.
+KERNEL_MODULE_PROBECONF:append:macbookpro14-3 = " apple-ibridge apple-ib-tb"
+module_conf_apple-ibridge:macbookpro14-3 = "options apple_ibridge tb_mode_param=keyboard"
+module_conf_apple-ib-tb:macbookpro14-3 = "options apple_ib_tb fnmode=0"
 
 EXTRA_OEMAKE += "KDIR=${STAGING_KERNEL_DIR}"
 

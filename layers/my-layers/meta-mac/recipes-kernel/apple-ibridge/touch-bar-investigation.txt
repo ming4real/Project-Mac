@@ -1,0 +1,97 @@
+MacBookPro14,3 Touch Bar investigation
+2026-11-23 UTC
+
+1. Baseline
+
+   Confirmed the target is MacBookPro14,3 running Yocto and Linux 6.18.63.
+   The Touch Bar was reported black. The apple-ib-tb platform device was
+   bound, but the HID devices exposed none of fnmode, idle_timeout, or
+   dim_timeout. Both HID interfaces for 05ac:8600 were bound to
+   apple-ibridge-hid. The ALS exposed an IIO device and returned 22 during
+   this session. The earlier zero reading was not reproduced.
+
+2. Boot and USB evidence
+
+   The boot log shows 1-3 initially in configuration 1. With
+   tb_mode_param=auto, the fork queued a switch to configuration 2, which
+   remained active. The complete USB configuration descriptors show a
+   boot-keyboard HID interface at 1:2 and 3:2 (83-byte report descriptor)
+   and a digitizer at 2:2 (782 bytes). All three configurations advertise
+   a second HID report descriptor of 634 bytes. Configuration 1 also
+   advertises the UVC camera interfaces.
+
+3. Report recognition and root cause
+
+   Parsing the live configuration 2 HID descriptors yielded the display
+   control (application 0xff120001, usage 0xff120021, feature report 2)
+   on interface 6. Neither interface contains the mode control
+   (application 0x00010006, usage 0x00ff0004). In the pinned source,
+   appletb_probe() only activates the firmware key strip once both
+   reports are found. The existing boot therefore cannot get as far as
+   sending the initial mode and display commands.
+
+   The loaded upstream HID modules advertise 05ac:8302 or 05ac:8102, and
+   appletbdrm advertises 05ac:8302. They did not claim this 05ac:8600.
+   The original T1 driver selects the basic configuration (1), and a
+   separate MacBookPro14,3 investigation recorded a working key strip
+   with the same 83-byte and 634-byte descriptor sizes in configuration 1.
+   The pinned fork did not contain touchbar-reset.service.
+
+   Original driver source
+   https://github.com/roadrunner2/macbook12-spi-driver/blob/touchbar-driver-hid-driver/apple-ibridge.c
+   Independent hardware record
+   https://github.com/cschaba/macbookpro14-3-linux/blob/main/RUNBOOK.md
+
+4. Yocto change
+
+   The recipe supplies tb_mode_param=keyboard for apple_ibridge and
+   fnmode=0 for apple_ib_tb on macbookpro14-3. The first option uses
+   the fork's keyboard configuration selector, which picks configuration 1
+   on this device. The second selects Esc and F1-F12 without holding Fn.
+   Both options are packaged with their respective modules. Patch 0003
+   logs per-interface report matches and completed probe activation.
+   It declines Touch Bar subdriver attachment when there is no matching
+   report, because its suspend and resume callbacks dereference the
+   matching report state. The parent iBridge can still attach the ALS.
+   Patches 0001 and 0002 remain in the build, including the asynchronous
+   USB configuration change that avoids the HID probe deadlock.
+
+5. First build and temporary hardware test
+
+   On dingle, the pinned source patched and built successfully against
+   Linux 6.18.63. Packaging QA passed and produced the r1 iBridge,
+   Touch Bar, and ALS IPKs. The split packages contain the expected
+   module options.
+
+   The approved temporary reload switched the iBridge to configuration 1.
+   Udev loaded the old child modules during re-enumeration. Reloading those
+   modules with the temporary builds confirmed a mode output report on
+   interface 2 and a display feature report on interface 3, both with
+   report ID 2. The driver reported activation with fnmode=0. The evdev
+   capture recorded press and release for F1 through F6.
+
+6. Reload fault and follow-up patch
+
+   Reading /proc/bus/input/devices after the child-module reload triggered
+   a kernel page fault in input_devices_seq_show(). The fork registers
+   an unused multitouch evdev device with the lifetime of the usbhid USB
+   interface and leaves its strings in the Touch Bar module. The device
+   survived module unload. The subsequent interface-unbind attempt
+   blocked in input_unregister_handler() after the oops. A reboot was
+   needed to clear this input-subsystem state.
+
+   Patch 0004 removes the unused multitouch device and its uncalled
+   report handler. The active firmware keyboard delivers the key events.
+   The r2 mac-image built successfully on dingle and its kernel-module
+   packages passed QA against Linux 6.18.63.
+
+7. Installation
+
+   With approval, upgraded only the three 6.18.63 iBridge IPKs to r2.
+   Verified their versions and both modprobe options. Saved the old
+   module binaries and the pre-upgrade package status in
+   /var/backups/project-mac-touch-bar-20261123. The immediate read-only
+   remount attempt was busy. The approved reboot is used to clear the
+   stuck input state and restore the normal boot-time mounts.
+
+   Post-reboot visual and full key-row verification is pending.
